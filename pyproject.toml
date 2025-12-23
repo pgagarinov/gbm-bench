@@ -1,0 +1,30 @@
+[project]
+authors = [{name = "Peter Gagarinov", email = "pgagarinov@alliedtesting.com"}]
+dependencies = []
+name = "perftest"
+requires-python = ">= 3.11"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["nvidia", "conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+perftest = { path = ".", editable = true }
+xgboost = {version = ">=2.1", extras = ["dask"]}
+catboost = ">=1.2"
+dask-cuda = ">=24.0"
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+numpy = ">=1.24,<2.3"
+scikit-learn = ">=1.8.0,<2"
+tabulate = ">=0.9.0,<0.10"
+python = ">=3.12,<3.13"
+cuda-python = ">=13.1.1,<14"
+pyarrow = ">=22.0.0,<23"

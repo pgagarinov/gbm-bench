@@ -1,0 +1,234 @@
+{
+  "hardware": {
+    "timestamp": "2025-12-23T16:33:58.743547",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_version": "3.12.12",
+    "cpu_count": 48,
+    "cpu_model": "INTEL(R) XEON(R) PLATINUM 8558",
+    "gpus": [
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      },
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      },
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      },
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      }
+    ],
+    "gpu_count": 4,
+    "gpu_error": "[Errno 2] No such file or directory: 'nvcc'",
+    "xgboost_version": "3.1.2",
+    "catboost_version": "1.2.8"
+  },
+  "parameters": {
+    "samples": 10500000,
+    "features": 28,
+    "iterations": [
+      100,
+      500,
+      1000
+    ],
+    "depth": 6,
+    "learning_rate": 0.03
+  },
+  "benchmarks": [
+    {
+      "iterations": 100,
+      "results": {
+        "xgboost_cpu": {
+          "time_seconds": 12.2,
+          "accuracy": 0.9489,
+          "auc": 0.9866,
+          "gpu_stats": {}
+        },
+        "xgboost_1gpu": {
+          "time_seconds": 5.95,
+          "accuracy": 0.9487,
+          "auc": 0.9865,
+          "gpu_stats": {
+            "gpu0_avg_util": 86.3,
+            "gpu0_max_util": 100,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.0,
+            "gpu2_max_util": 0,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_cpu": {
+          "time_seconds": 75.45,
+          "accuracy": 0.944,
+          "auc": 0.985,
+          "gpu_stats": {}
+        },
+        "catboost_1gpu": {
+          "time_seconds": 65.18,
+          "accuracy": 0.9444,
+          "auc": 0.9851,
+          "gpu_stats": {
+            "gpu0_avg_util": 82.1,
+            "gpu0_max_util": 98,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.1,
+            "gpu2_max_util": 1,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_4gpu": {
+          "time_seconds": 59.74,
+          "accuracy": 0.9442,
+          "auc": 0.9851,
+          "gpu_stats": {
+            "gpu0_avg_util": 40.7,
+            "gpu0_max_util": 82,
+            "gpu1_avg_util": 40.5,
+            "gpu1_max_util": 81,
+            "gpu2_avg_util": 40.5,
+            "gpu2_max_util": 81,
+            "gpu3_avg_util": 40.5,
+            "gpu3_max_util": 81
+          }
+        }
+      }
+    },
+    {
+      "iterations": 500,
+      "results": {
+        "xgboost_cpu": {
+          "time_seconds": 45.71,
+          "accuracy": 0.9802,
+          "auc": 0.9939,
+          "gpu_stats": {}
+        },
+        "xgboost_1gpu": {
+          "time_seconds": 22.33,
+          "accuracy": 0.9798,
+          "auc": 0.9938,
+          "gpu_stats": {
+            "gpu0_avg_util": 94.7,
+            "gpu0_max_util": 100,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.0,
+            "gpu2_max_util": 0,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_cpu": {
+          "time_seconds": 144.61,
+          "accuracy": 0.9786,
+          "auc": 0.9936,
+          "gpu_stats": {}
+        },
+        "catboost_1gpu": {
+          "time_seconds": 95.76,
+          "accuracy": 0.9788,
+          "auc": 0.9936,
+          "gpu_stats": {
+            "gpu0_avg_util": 94.0,
+            "gpu0_max_util": 98,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.0,
+            "gpu2_max_util": 0,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_4gpu": {
+          "time_seconds": 66.7,
+          "accuracy": 0.9787,
+          "auc": 0.9936,
+          "gpu_stats": {
+            "gpu0_avg_util": 65.9,
+            "gpu0_max_util": 82,
+            "gpu1_avg_util": 64.2,
+            "gpu1_max_util": 81,
+            "gpu2_avg_util": 65.1,
+            "gpu2_max_util": 81,
+            "gpu3_avg_util": 62.9,
+            "gpu3_max_util": 81
+          }
+        }
+      }
+    },
+    {
+      "iterations": 1000,
+      "results": {
+        "xgboost_cpu": {
+          "time_seconds": 90.32,
+          "accuracy": 0.9854,
+          "auc": 0.9944,
+          "gpu_stats": {}
+        },
+        "xgboost_1gpu": {
+          "time_seconds": 41.69,
+          "accuracy": 0.9854,
+          "auc": 0.9944,
+          "gpu_stats": {
+            "gpu0_avg_util": 97.1,
+            "gpu0_max_util": 100,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.0,
+            "gpu2_max_util": 0,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_cpu": {
+          "time_seconds": 226.69,
+          "accuracy": 0.9844,
+          "auc": 0.9943,
+          "gpu_stats": {}
+        },
+        "catboost_1gpu": {
+          "time_seconds": 133.58,
+          "accuracy": 0.9844,
+          "auc": 0.9943,
+          "gpu_stats": {
+            "gpu0_avg_util": 95.5,
+            "gpu0_max_util": 98,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.0,
+            "gpu2_max_util": 0,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_4gpu": {
+          "time_seconds": 74.57,
+          "accuracy": 0.9844,
+          "auc": 0.9943,
+          "gpu_stats": {
+            "gpu0_avg_util": 73.5,
+            "gpu0_max_util": 84,
+            "gpu1_avg_util": 71.7,
+            "gpu1_max_util": 83,
+            "gpu2_avg_util": 72.9,
+            "gpu2_max_util": 83,
+            "gpu3_avg_util": 71.4,
+            "gpu3_max_util": 83
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "hardware": {
+    "timestamp": "2025-12-23T20:11:26.347646",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_version": "3.12.12",
+    "cpu_count": 48,
+    "cpu_model": "INTEL(R) XEON(R) PLATINUM 8558",
+    "gpus": [
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      },
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      },
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      },
+      {
+        "name": "NVIDIA L4",
+        "memory_mb": 24570,
+        "driver": "570.133.20"
+      }
+    ],
+    "gpu_count": 4,
+    "gpu_error": "[Errno 2] No such file or directory: 'nvcc'",
+    "xgboost_version": "3.1.2",
+    "catboost_version": "1.2.8"
+  },
+  "parameters": {
+    "samples": 10500000,
+    "features": 28,
+    "iterations": [
+      100
+    ],
+    "depth": 6,
+    "learning_rate": 0.03
+  },
+  "benchmarks": [
+    {
+      "iterations": 100,
+      "results": {
+        "xgboost_cpu": {
+          "time_seconds": 10.76,
+          "accuracy": 0.9489,
+          "auc": 0.9866,
+          "gpu_stats": {}
+        },
+        "xgboost_1gpu": {
+          "time_seconds": 5.99,
+          "accuracy": 0.9487,
+          "auc": 0.9865,
+          "gpu_stats": {
+            "gpu0_avg_util": 87.9,
+            "gpu0_max_util": 100,
+            "gpu1_avg_util": 0.0,
+            "gpu1_max_util": 0,
+            "gpu2_avg_util": 0.0,
+            "gpu2_max_util": 0,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "xgboost_4gpu_dask": {
+          "time_seconds": 4.26,
+          "accuracy": 0.9493,
+          "auc": 0.9867,
+          "gpu_stats": {
+            "gpu0_avg_util": 25.1,
+            "gpu0_max_util": 80,
+            "gpu1_avg_util": 30.6,
+            "gpu1_max_util": 81,
+            "gpu2_avg_util": 25.8,
+            "gpu2_max_util": 80,
+            "gpu3_avg_util": 22.6,
+            "gpu3_max_util": 79
+          }
+        },
+        "catboost_cpu": {
+          "time_seconds": 74.4,
+          "accuracy": 0.944,
+          "auc": 0.985,
+          "gpu_stats": {}
+        },
+        "catboost_1gpu": {
+          "time_seconds": 64.01,
+          "accuracy": 0.9444,
+          "auc": 0.9851,
+          "gpu_stats": {
+            "gpu0_avg_util": 80.6,
+            "gpu0_max_util": 98,
+            "gpu1_avg_util": 0.1,
+            "gpu1_max_util": 2,
+            "gpu2_avg_util": 0.1,
+            "gpu2_max_util": 1,
+            "gpu3_avg_util": 0.0,
+            "gpu3_max_util": 0
+          }
+        },
+        "catboost_4gpu": {
+          "time_seconds": 58.37,
+          "accuracy": 0.9437,
+          "auc": 0.9849,
+          "gpu_stats": {
+            "gpu0_avg_util": 39.7,
+            "gpu0_max_util": 81,
+            "gpu1_avg_util": 39.7,
+            "gpu1_max_util": 80,
+            "gpu2_avg_util": 39.5,
+            "gpu2_max_util": 80,
+            "gpu3_avg_util": 39.8,
+            "gpu3_max_util": 80
+          }
+        }
+      }
+    }
+  ]
+}
