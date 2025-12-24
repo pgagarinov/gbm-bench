@@ -11,20 +11,32 @@ requires = ["hatchling"]
 
 [tool.pixi.workspace]
 channels = ["nvidia", "conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [tool.pixi.pypi-dependencies]
 perftest = { path = ".", editable = true }
-xgboost = {version = ">=2.1", extras = ["dask"]}
-catboost = ">=1.2"
-dask-cuda = ">=24.0"
 
 [tool.pixi.tasks]
 
+# Common dependencies for all platforms
 [tool.pixi.dependencies]
 numpy = ">=1.24,<2.3"
 scikit-learn = ">=1.8.0,<2"
 tabulate = ">=0.9.0,<0.10"
 python = ">=3.12,<3.13"
-cuda-python = ">=13.1.1,<14"
 pyarrow = ">=22.0.0,<23"
+xgboost = ">=2.1"
+pip = ">=24"
+
+# macOS uses pypi catboost to avoid numpy binary mismatch
+[tool.pixi.target.osx-arm64.pypi-dependencies]
+catboost = ">=1.2"
+
+# Linux-specific dependencies (conda catboost + GPU deps)
+[tool.pixi.target.linux-64.dependencies]
+catboost = ">=1.2"
+cuda-python = ">=13.1.1,<14"
+
+[tool.pixi.target.linux-64.pypi-dependencies]
+xgboost = {version = ">=2.1", extras = ["dask"]}
+dask-cuda = ">=24.0"

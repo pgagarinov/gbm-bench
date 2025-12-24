@@ -2,8 +2,20 @@
 
 Comprehensive benchmark comparing XGBoost and CatBoost performance across CPU, single GPU, and multi-GPU configurations.
 
+## Platform Support
+
+This benchmark suite supports two platforms:
+
+| Platform | CPU Benchmarks | GPU Benchmarks | Multi-GPU |
+|----------|---------------|----------------|-----------|
+| **Linux (x86_64)** | ✅ | ✅ | ✅ |
+| **macOS (Apple Silicon)** | ✅ | ❌ | ❌ |
+
+**Note**: GPU benchmarks require NVIDIA CUDA GPUs, which are only available on Linux. macOS with Apple Silicon can run CPU-only benchmarks.
+
 ## Hardware Requirements
 
+### Linux (Full GPU Support)
 - **CPU**: Multi-core processor (benchmark captures core count)
 - **GPU**: NVIDIA GPU(s) with CUDA support
   - Single GPU minimum for GPU benchmarks
@@ -11,11 +23,16 @@ Comprehensive benchmark comparing XGBoost and CatBoost performance across CPU, s
 - **RAM**: Sufficient for dataset size (default 10.5M samples requires ~8GB)
 - **NVIDIA Driver**: 470+ recommended (tested with 570.133.20)
 
+### macOS (CPU Only)
+- **CPU**: Apple Silicon (M1/M2/M3) or Intel
+- **RAM**: Sufficient for dataset size (default 10.5M samples requires ~8GB)
+- Tested on Mac Studio with Apple M3 Ultra (32 cores, 512GB RAM)
+
 ## Software Requirements
 
-- Linux (tested on Ubuntu with kernel 6.8.0)
 - [Pixi](https://pixi.sh) package manager
-- NVIDIA CUDA drivers installed system-wide
+- **Linux**: NVIDIA CUDA drivers installed system-wide
+- **macOS**: No additional requirements (CPU-only)
 
 ## Installation
 
@@ -38,20 +55,36 @@ cd gbm-bench
 pixi install
 ```
 
-This installs all required packages:
+This installs all required packages. Dependencies vary by platform:
+
+**Linux:**
 - `xgboost>=2.1` with Dask support (from PyPI for CUDA support)
-- `catboost>=1.2` (from PyPI)
+- `catboost>=1.2` (from conda)
 - `dask-cuda>=24.0` for multi-GPU XGBoost
-- `numpy`, `scikit-learn`, `tabulate`, `cuda-python`, `pyarrow`
+- `cuda-python>=13.1.1` for CUDA support
+- `numpy`, `scikit-learn`, `tabulate`, `pyarrow`
+
+**macOS:**
+- `xgboost>=2.1` (from conda, CPU-only)
+- `catboost>=1.2` (from PyPI to avoid numpy binary mismatch)
+- `numpy`, `scikit-learn`, `tabulate`, `pyarrow`
 
 ## Running Benchmarks
 
-### Full Benchmark (Recommended)
+### Linux: Full Benchmark (Recommended)
 
 Run all 6 configurations (XGBoost/CatBoost x CPU/1GPU/4GPU):
 
 ```bash
 pixi run python benchmark_full.py
+```
+
+### macOS: CPU-Only Benchmark
+
+On macOS, skip GPU tests (they will fail without NVIDIA GPUs):
+
+```bash
+pixi run python benchmark_full.py --skip-1gpu --skip-multi-gpu
 ```
 
 **Default parameters:**
@@ -239,6 +272,8 @@ ls -la /dev/nvidia*
 
 To reproduce the exact benchmark results on a different machine:
 
+### Linux (Full GPU Benchmark)
+
 ```bash
 # 1. Clone and install
 git clone git@github.com:pgagarinov/gbm-bench.git
@@ -248,10 +283,32 @@ pixi install
 # 2. Run with same parameters as reference
 pixi run python benchmark_full.py \
     --samples 10500000 \
+    --features 28 \
     --iterations 100 \
     --depth 6 \
     --learning-rate 0.03 \
-    --n-gpus 4
+    --gpus 4
+
+# 3. Compare your JSON output with reference files
+```
+
+### macOS (CPU-Only Benchmark)
+
+```bash
+# 1. Clone and install
+git clone git@github.com:pgagarinov/gbm-bench.git
+cd gbm-bench
+pixi install
+
+# 2. Run CPU-only benchmarks (skip GPU tests)
+pixi run python benchmark_full.py \
+    --samples 10500000 \
+    --features 28 \
+    --iterations 100 \
+    --depth 6 \
+    --learning-rate 0.03 \
+    --skip-1gpu \
+    --skip-multi-gpu
 
 # 3. Compare your JSON output with reference files
 ```
@@ -260,7 +317,7 @@ pixi run python benchmark_full.py \
 
 ## Reference Results
 
-Tested on Intel Xeon Platinum 8558 (48 cores) + 4x NVIDIA L4 GPUs:
+### Linux: Intel Xeon Platinum 8558 (48 cores) + 4x NVIDIA L4 GPUs
 
 | Configuration | Time (s) | Accuracy | AUC | GPU Speedup |
 |---------------|----------|----------|-----|-------------|
@@ -271,10 +328,25 @@ Tested on Intel Xeon Platinum 8558 (48 cores) + 4x NVIDIA L4 GPUs:
 | CatBoost 1 GPU | 64.01 | 0.9444 | 0.9851 | 1.2x |
 | CatBoost 4 GPU | 58.37 | 0.9437 | 0.9849 | 1.3x |
 
+### macOS: Apple M3 Ultra (32 cores) - CPU Only
+
+| Configuration | Time (s) | Accuracy | AUC |
+|---------------|----------|----------|-----|
+| XGBoost CPU | 6.85 | 0.9489 | 0.9866 |
+| CatBoost CPU | 57.23 | 0.9442 | 0.9851 |
+
+### CPU Performance Comparison (Xeon vs M3 Ultra)
+
+| Test | Intel Xeon 8558 (48 cores) | Apple M3 Ultra (32 cores) | M3 Speedup |
+|------|---------------------------|---------------------------|------------|
+| XGBoost CPU | 10.76s | 6.85s | **1.57x faster** |
+| CatBoost CPU | 74.4s | 57.23s | **1.30x faster** |
+
 **Key findings:**
-- XGBoost is ~7x faster than CatBoost on this hardware
+- XGBoost is ~7-8x faster than CatBoost on both platforms
 - Both achieve similar accuracy (~0.94-0.95) and AUC (~0.985-0.987)
-- GPU speedups are modest due to fast Xeon CPU and inference-optimized L4 GPUs
+- Apple M3 Ultra outperforms 48-core Xeon on CPU benchmarks despite fewer cores
+- GPU speedups on Linux are modest due to fast Xeon CPU and inference-optimized L4 GPUs
 
 ## License
 
