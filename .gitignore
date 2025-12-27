@@ -53,3 +53,6 @@ catboost_info/
 # Local config
 .env
 .env.local
+
+# SSH keys
+*.pem
