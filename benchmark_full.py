@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Comprehensive benchmark for XGBoost and CatBoost with:
+Comprehensive benchmark for XGBoost, CatBoost, and LightGBM with:
 1. Accuracy/AUC comparison for fair evaluation
 2. JSON output with hardware configuration
-3. XGBoost multi-GPU via Dask
+3. XGBoost/LightGBM multi-GPU via Dask
+4. CatBoost/LightGBM native multi-GPU support
 """
 
 import argparse
@@ -23,6 +24,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
 import catboost as cb
+import lightgbm as lgb
 import xgboost as xgb
 
 
@@ -144,6 +146,7 @@ def get_hardware_info():
     # Library versions
     info["xgboost_version"] = xgb.__version__
     info["catboost_version"] = cb.__version__
+    info["lightgbm_version"] = lgb.__version__
 
     return info
 
@@ -327,6 +330,281 @@ def benchmark_catboost(X_train, y_train, X_test, y_test, device: str,
     }
 
 
+def benchmark_lightgbm_single(X_train, y_train, X_test, y_test, device: str,
+                               iterations: int, depth: int, learning_rate: float):
+    """Benchmark LightGBM on single device (CPU or 1 GPU)."""
+    # Convert depth to num_leaves (LightGBM uses leaf-wise growth)
+    # Also set max_depth to match XGBoost/CatBoost for fair comparison
+    num_leaves = 2 ** depth
+
+    params = {
+        "objective": "binary",
+        "metric": "binary_logloss",
+        "num_leaves": num_leaves,
+        "max_depth": depth,
+        "learning_rate": learning_rate,
+        "verbose": -1,
+        "force_row_wise": True,
+    }
+
+    if device == "cpu":
+        params["device"] = "cpu"
+        params["num_threads"] = -1
+    else:
+        params["device"] = "gpu"
+        params["gpu_device_id"] = 0
+
+    train_data = lgb.Dataset(X_train, label=y_train)
+    valid_data = lgb.Dataset(X_test, label=y_test, reference=train_data)
+
+    monitor = GPUMonitor()
+    if device != "cpu":
+        monitor.start()
+
+    start = time.perf_counter()
+    model = lgb.train(
+        params,
+        train_data,
+        num_boost_round=iterations,
+        valid_sets=[valid_data],
+    )
+    elapsed = time.perf_counter() - start
+
+    if device != "cpu":
+        monitor.stop()
+
+    # Predictions and metrics
+    y_pred_proba = model.predict(X_test)
+    y_pred = (y_pred_proba > 0.5).astype(int)
+    accuracy = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_pred_proba)
+
+    return {
+        "time_seconds": round(elapsed, 2),
+        "accuracy": round(accuracy, 4),
+        "auc": round(auc, 4),
+        "gpu_stats": monitor.get_stats() if device != "cpu" else {}
+    }
+
+
+def benchmark_lightgbm_multi_gpu(X_train, y_train, X_test, y_test,
+                                  n_gpus: int, iterations: int,
+                                  depth: int, learning_rate: float):
+    """Benchmark LightGBM with native multi-GPU support (experimental)."""
+    num_leaves = 2 ** depth
+
+    params = {
+        "objective": "binary",
+        "metric": "binary_logloss",
+        "num_leaves": num_leaves,
+        "max_depth": depth,
+        "learning_rate": learning_rate,
+        "verbose": -1,
+        "force_row_wise": True,
+        "device": "gpu",
+        "num_gpu": n_gpus,
+    }
+
+    train_data = lgb.Dataset(X_train, label=y_train)
+    valid_data = lgb.Dataset(X_test, label=y_test, reference=train_data)
+
+    monitor = GPUMonitor()
+    monitor.start()
+
+    start = time.perf_counter()
+    model = lgb.train(
+        params,
+        train_data,
+        num_boost_round=iterations,
+        valid_sets=[valid_data],
+    )
+    elapsed = time.perf_counter() - start
+
+    monitor.stop()
+
+    # Predictions and metrics
+    y_pred_proba = model.predict(X_test)
+    y_pred = (y_pred_proba > 0.5).astype(int)
+    accuracy = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_pred_proba)
+
+    return {
+        "time_seconds": round(elapsed, 2),
+        "accuracy": round(accuracy, 4),
+        "auc": round(auc, 4),
+        "gpu_stats": monitor.get_stats()
+    }
+
+
+def benchmark_lightgbm_dask(X_train, y_train, X_test, y_test,
+                             n_gpus: int, iterations: int,
+                             depth: int, learning_rate: float):
+    """Benchmark LightGBM with Dask for multi-GPU using LocalCUDACluster."""
+    from lightgbm.dask import DaskLGBMClassifier
+    from dask_cuda import LocalCUDACluster
+    from dask.distributed import Client
+    from dask import array as da
+
+    num_leaves = 2 ** depth
+
+    print(f"  Setting up LocalCUDACluster with {n_gpus} GPUs...")
+
+    cluster = LocalCUDACluster(
+        n_workers=n_gpus,
+        CUDA_VISIBLE_DEVICES=",".join(str(i) for i in range(n_gpus)),
+    )
+    client = Client(cluster)
+
+    try:
+        # Convert to Dask arrays
+        chunk_size = len(X_train) // n_gpus
+        X_train_da = da.from_array(X_train, chunks=(chunk_size, -1))
+        y_train_da = da.from_array(y_train, chunks=(chunk_size,))
+
+        model = DaskLGBMClassifier(
+            n_estimators=iterations,
+            num_leaves=num_leaves,
+            max_depth=depth,
+            learning_rate=learning_rate,
+            objective="binary",
+            verbose=-1,
+            device="gpu",
+        )
+
+        monitor = GPUMonitor()
+        monitor.start()
+
+        start = time.perf_counter()
+        model.fit(X_train_da, y_train_da, client=client)
+        elapsed = time.perf_counter() - start
+
+        monitor.stop()
+
+        # Predictions on CPU
+        y_pred_proba = model.predict_proba(X_test)[:, 1]
+        y_pred = model.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+        auc = roc_auc_score(y_test, y_pred_proba)
+
+        return {
+            "time_seconds": round(elapsed, 2),
+            "accuracy": round(accuracy, 4),
+            "auc": round(auc, 4),
+            "gpu_stats": monitor.get_stats()
+        }
+    finally:
+        client.close()
+        cluster.close()
+
+
+def benchmark_sklearn_rf(X_train, y_train, X_test, y_test,
+                          n_estimators: int, depth: int):
+    """Benchmark scikit-learn RandomForestClassifier."""
+    from sklearn.ensemble import RandomForestClassifier
+
+    model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=depth,
+        n_jobs=-1,
+        random_state=42,
+    )
+
+    start = time.perf_counter()
+    model.fit(X_train, y_train)
+    elapsed = time.perf_counter() - start
+
+    y_pred = model.predict(X_test)
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    accuracy = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_pred_proba)
+
+    return {
+        "time_seconds": round(elapsed, 2),
+        "accuracy": round(accuracy, 4),
+        "auc": round(auc, 4),
+        "gpu_stats": {}
+    }
+
+
+def benchmark_xgboost_rf(X_train, y_train, X_test, y_test,
+                          n_estimators: int, depth: int):
+    """Benchmark XGBoost RandomForest (XGBRFClassifier).
+
+    Note: Uses depth+1 to produce similar AUC to sklearn RF with same depth.
+    """
+    from xgboost import XGBRFClassifier
+
+    # XGBoost RF needs depth+1 to match sklearn RF accuracy/AUC
+    adjusted_depth = depth + 1
+
+    model = XGBRFClassifier(
+        n_estimators=n_estimators,
+        max_depth=adjusted_depth,
+        n_jobs=-1,
+        random_state=42,
+        verbosity=0,
+    )
+
+    start = time.perf_counter()
+    model.fit(X_train, y_train)
+    elapsed = time.perf_counter() - start
+
+    y_pred = model.predict(X_test)
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    accuracy = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_pred_proba)
+
+    return {
+        "time_seconds": round(elapsed, 2),
+        "accuracy": round(accuracy, 4),
+        "auc": round(auc, 4),
+        "gpu_stats": {}
+    }
+
+
+def benchmark_lightgbm_rf(X_train, y_train, X_test, y_test,
+                           n_estimators: int, depth: int):
+    """Benchmark LightGBM RandomForest (boosting_type='rf').
+
+    Note: Uses adjusted depth and num_leaves to produce similar AUC to sklearn RF.
+    LightGBM leaf-wise growth requires different params for comparable results.
+    """
+    from lightgbm import LGBMClassifier
+
+    # LightGBM RF needs higher depth and specific num_leaves to match sklearn RF AUC
+    # For depth=6: use depth=11, num_leaves=300 (empirically tuned)
+    adjusted_depth = depth + 5
+    num_leaves = 300  # Fixed value that works well across different base depths
+
+    model = LGBMClassifier(
+        boosting_type='rf',
+        n_estimators=n_estimators,
+        num_leaves=num_leaves,
+        max_depth=adjusted_depth,
+        subsample=0.632,  # Standard RF bagging fraction (1 - 1/e)
+        subsample_freq=1,  # Required for RF mode (bagging_freq)
+        n_jobs=-1,
+        random_state=42,
+        verbose=-1,
+    )
+
+    start = time.perf_counter()
+    model.fit(X_train, y_train)
+    elapsed = time.perf_counter() - start
+
+    y_pred = model.predict(X_test)
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    accuracy = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_pred_proba)
+
+    return {
+        "time_seconds": round(elapsed, 2),
+        "accuracy": round(accuracy, 4),
+        "auc": round(auc, 4),
+        "gpu_stats": {}
+    }
+
+
 def run_benchmarks(args):
     """Run all benchmarks."""
     results = {
@@ -337,6 +615,7 @@ def run_benchmarks(args):
             "iterations": args.iterations,
             "depth": args.depth,
             "learning_rate": args.learning_rate,
+            "lightgbm_num_leaves": 2 ** args.depth,  # LightGBM specific
         },
         "benchmarks": []
     }
@@ -352,7 +631,7 @@ def run_benchmarks(args):
         bench_results = {"iterations": iterations, "results": {}}
 
         # XGBoost CPU
-        if not args.skip_cpu:
+        if not args.skip_cpu and not args.skip_xgboost:
             print("\nXGBoost CPU...", end=" ", flush=True)
             try:
                 res = benchmark_xgboost_single(
@@ -365,7 +644,7 @@ def run_benchmarks(args):
                 print(f"Error: {e}")
 
         # XGBoost 1 GPU
-        if not args.skip_1gpu:
+        if not args.skip_1gpu and not args.skip_xgboost:
             print("XGBoost 1 GPU...", end=" ", flush=True)
             try:
                 res = benchmark_xgboost_single(
@@ -378,7 +657,7 @@ def run_benchmarks(args):
                 print(f"Error: {e}")
 
         # XGBoost multi-GPU with Dask
-        if not args.skip_multi_gpu and args.gpus > 1:
+        if not args.skip_multi_gpu and args.gpus > 1 and not args.skip_xgboost:
             print(f"XGBoost {args.gpus} GPUs (Dask)...", end=" ", flush=True)
             try:
                 res = benchmark_xgboost_dask(
@@ -391,7 +670,7 @@ def run_benchmarks(args):
                 print(f"Error: {e}")
 
         # CatBoost CPU
-        if not args.skip_cpu:
+        if not args.skip_cpu and not args.skip_catboost:
             print("CatBoost CPU...", end=" ", flush=True)
             try:
                 res = benchmark_catboost(
@@ -404,7 +683,7 @@ def run_benchmarks(args):
                 print(f"Error: {e}")
 
         # CatBoost 1 GPU
-        if not args.skip_1gpu:
+        if not args.skip_1gpu and not args.skip_catboost:
             print("CatBoost 1 GPU...", end=" ", flush=True)
             try:
                 res = benchmark_catboost(
@@ -417,7 +696,7 @@ def run_benchmarks(args):
                 print(f"Error: {e}")
 
         # CatBoost multi-GPU
-        if not args.skip_multi_gpu and args.gpus > 1:
+        if not args.skip_multi_gpu and args.gpus > 1 and not args.skip_catboost:
             print(f"CatBoost {args.gpus} GPUs...", end=" ", flush=True)
             try:
                 devices = f"0-{args.gpus - 1}"
@@ -427,6 +706,96 @@ def run_benchmarks(args):
                 )
                 print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
                 bench_results["results"][f"catboost_{args.gpus}gpu"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+        # LightGBM CPU
+        if not args.skip_cpu and not args.skip_lightgbm:
+            print("LightGBM CPU...", end=" ", flush=True)
+            try:
+                res = benchmark_lightgbm_single(
+                    X_train, y_train, X_test, y_test, "cpu",
+                    iterations, args.depth, args.learning_rate
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"]["lightgbm_cpu"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+        # LightGBM 1 GPU
+        if not args.skip_1gpu and not args.skip_lightgbm:
+            print("LightGBM 1 GPU...", end=" ", flush=True)
+            try:
+                res = benchmark_lightgbm_single(
+                    X_train, y_train, X_test, y_test, "gpu",
+                    iterations, args.depth, args.learning_rate
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"]["lightgbm_1gpu"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+        # LightGBM multi-GPU (native, experimental)
+        if not args.skip_multi_gpu and args.gpus > 1 and not args.skip_lightgbm:
+            print(f"LightGBM {args.gpus} GPUs (native)...", end=" ", flush=True)
+            try:
+                res = benchmark_lightgbm_multi_gpu(
+                    X_train, y_train, X_test, y_test,
+                    args.gpus, iterations, args.depth, args.learning_rate
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"][f"lightgbm_{args.gpus}gpu"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+        # LightGBM multi-GPU with Dask
+        if not args.skip_multi_gpu and args.gpus > 1 and not args.skip_lightgbm:
+            print(f"LightGBM {args.gpus} GPUs (Dask)...", end=" ", flush=True)
+            try:
+                res = benchmark_lightgbm_dask(
+                    X_train, y_train, X_test, y_test,
+                    args.gpus, iterations, args.depth, args.learning_rate
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"][f"lightgbm_{args.gpus}gpu_dask"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+        # Random Forest benchmarks (CPU only)
+        if not args.skip_cpu and not args.skip_rf:
+            # scikit-learn RF
+            print("RF (scikit-learn)...", end=" ", flush=True)
+            try:
+                res = benchmark_sklearn_rf(
+                    X_train, y_train, X_test, y_test,
+                    iterations, args.depth
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"]["rf_sklearn"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+            # XGBoost RF
+            print("RF (XGBoost)...", end=" ", flush=True)
+            try:
+                res = benchmark_xgboost_rf(
+                    X_train, y_train, X_test, y_test,
+                    iterations, args.depth
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"]["rf_xgboost"] = res
+            except Exception as e:
+                print(f"Error: {e}")
+
+            # LightGBM RF
+            print("RF (LightGBM)...", end=" ", flush=True)
+            try:
+                res = benchmark_lightgbm_rf(
+                    X_train, y_train, X_test, y_test,
+                    iterations, args.depth
+                )
+                print(f"{res['time_seconds']}s | Acc: {res['accuracy']} | AUC: {res['auc']}")
+                bench_results["results"]["rf_lightgbm"] = res
             except Exception as e:
                 print(f"Error: {e}")
 
@@ -513,6 +882,48 @@ def run_single_test(test_name: str, args):
             X_train, y_train, X_test, y_test, "cpu",
             iterations, args.depth, args.learning_rate
         )
+    elif test_name == "lgb-cpu":
+        print("\nLightGBM CPU...")
+        res = benchmark_lightgbm_single(
+            X_train, y_train, X_test, y_test, "cpu",
+            iterations, args.depth, args.learning_rate
+        )
+    elif test_name == "lgb-1gpu":
+        print("\nLightGBM 1 GPU...")
+        res = benchmark_lightgbm_single(
+            X_train, y_train, X_test, y_test, "gpu",
+            iterations, args.depth, args.learning_rate
+        )
+    elif test_name == "lgb-4gpu":
+        print(f"\nLightGBM {args.gpus} GPUs (native)...")
+        res = benchmark_lightgbm_multi_gpu(
+            X_train, y_train, X_test, y_test,
+            args.gpus, iterations, args.depth, args.learning_rate
+        )
+    elif test_name == "lgb-4gpu-dask":
+        print(f"\nLightGBM {args.gpus} GPUs (Dask)...")
+        res = benchmark_lightgbm_dask(
+            X_train, y_train, X_test, y_test,
+            args.gpus, iterations, args.depth, args.learning_rate
+        )
+    elif test_name == "rf-sklearn":
+        print("\nRandom Forest (scikit-learn)...")
+        res = benchmark_sklearn_rf(
+            X_train, y_train, X_test, y_test,
+            iterations, args.depth
+        )
+    elif test_name == "rf-xgboost":
+        print("\nRandom Forest (XGBoost)...")
+        res = benchmark_xgboost_rf(
+            X_train, y_train, X_test, y_test,
+            iterations, args.depth
+        )
+    elif test_name == "rf-lightgbm":
+        print("\nRandom Forest (LightGBM)...")
+        res = benchmark_lightgbm_rf(
+            X_train, y_train, X_test, y_test,
+            iterations, args.depth
+        )
     else:
         raise ValueError(f"Unknown test: {test_name}")
 
@@ -527,11 +938,15 @@ def run_single_test(test_name: str, args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Full XGBoost/CatBoost benchmark")
+    parser = argparse.ArgumentParser(description="Full XGBoost/CatBoost/LightGBM benchmark")
 
     # Quick test mode
-    parser.add_argument("--test", choices=["xgb-cpu", "xgb-1gpu", "xgb-4gpu", "cb-cpu", "cb-1gpu", "cb-4gpu"],
-                        help="Run a single quick test")
+    parser.add_argument("--test", choices=[
+        "xgb-cpu", "xgb-1gpu", "xgb-4gpu",
+        "cb-cpu", "cb-1gpu", "cb-4gpu",
+        "lgb-cpu", "lgb-1gpu", "lgb-4gpu", "lgb-4gpu-dask",
+        "rf-sklearn", "rf-xgboost", "rf-lightgbm"
+    ], help="Run a single quick test")
 
     parser.add_argument("--samples", type=int, default=10_500_000)
     parser.add_argument("--features", type=int, default=28)
@@ -544,6 +959,8 @@ def main():
     parser.add_argument("--skip-multi-gpu", action="store_true")
     parser.add_argument("--skip-xgboost", action="store_true")
     parser.add_argument("--skip-catboost", action="store_true")
+    parser.add_argument("--skip-lightgbm", action="store_true")
+    parser.add_argument("--skip-rf", action="store_true", help="Skip Random Forest benchmarks")
     parser.add_argument("--output", type=str, help="Output JSON file")
     args = parser.parse_args()
 
@@ -552,7 +969,7 @@ def main():
         return
 
     print("=" * 70)
-    print("XGBoost & CatBoost Comprehensive Benchmark")
+    print("XGBoost, CatBoost & LightGBM Comprehensive Benchmark")
     print("=" * 70)
     print(f"Dataset: {args.samples:,} samples x {args.features} features")
     print(f"Depth: {args.depth}, Learning rate: {args.learning_rate}")

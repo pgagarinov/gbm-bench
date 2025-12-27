@@ -1,6 +1,6 @@
 # Claude Code Instructions
 
-This is a GPU benchmark suite comparing XGBoost and CatBoost performance.
+This is a GPU benchmark suite comparing XGBoost, CatBoost, and LightGBM performance.
 
 ## Project Overview
 
@@ -31,4 +31,11 @@ pixi run python benchmark_full.py --skip-1gpu --skip-multi-gpu  # CPU only (macO
 pixi run python benchmark_full.py --test xgb-4gpu  # Test single config (Linux)
 pixi run python benchmark_full.py --test xgb-cpu   # Test XGBoost CPU
 pixi run python benchmark_full.py --test cb-cpu    # Test CatBoost CPU
+pixi run python benchmark_full.py --test lgb-cpu   # Test LightGBM CPU
+pixi run python benchmark_full.py --test lgb-4gpu  # Test LightGBM multi-GPU (native)
+pixi run python benchmark_full.py --test lgb-4gpu-dask  # Test LightGBM multi-GPU (Dask)
+pixi run python benchmark_full.py --test rf-sklearn   # Test sklearn RandomForest
+pixi run python benchmark_full.py --test rf-xgboost   # Test XGBoost RandomForest
+pixi run python benchmark_full.py --test rf-lightgbm  # Test LightGBM RandomForest
+pixi run python benchmark_full.py --skip-rf           # Skip RF benchmarks
 ```
