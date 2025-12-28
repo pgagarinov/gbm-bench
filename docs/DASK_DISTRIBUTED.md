@@ -148,6 +148,73 @@ Ray adds significant overhead for small workloads.
 
 ---
 
+## Network Performance Requirements
+
+### Why Distributed Training is Slower for Small Datasets
+
+From our benchmarks:
+
+| Dataset | Data Size | Baseline | Dask | Overhead | Effective Rate |
+|---------|-----------|----------|------|----------|----------------|
+| 500K samples | 97 MB | 0.91s | 4.20s | 3.3s | 30 MB/s |
+| 2M samples | 389 MB | 1.87s | 5.89s | 4.0s | 97 MB/s |
+
+The overhead includes:
+- **Data serialization/transfer**: ~50% of overhead
+- **Dask coordination**: Worker startup, task scheduling (~30%)
+- **XGBoost Rabit sync**: Histogram exchange per iteration (~20%)
+
+### Minimum Requirements for Speedup
+
+| Scenario | Dataset Size | Min Network | Min Training Time |
+|----------|-------------|-------------|-------------------|
+| **Break-even** | >10M samples | 1 Gbps | >30s |
+| **1.5x speedup** | >50M samples | 10 Gbps | >2 min |
+| **Near-linear** | >100M samples | 25+ Gbps | >10 min |
+
+### XGBoost Histogram Synchronization
+
+XGBoost syncs histograms (not full gradients) each iteration:
+
+| Tree Depth | Per Node | Per Tree (max) |
+|------------|----------|----------------|
+| 6 | 200 KB | 12.5 MB |
+| 8 | 200 KB | 50 MB |
+| 10 | 200 KB | 200 MB |
+
+For 100 iterations: ~100-500 MB histogram data synced.
+At 1 Gbps: 0.8-4s additional overhead.
+
+### Recommendations by Network Speed
+
+**1 Gbps Ethernet (Consumer Macs)**
+- Max throughput: ~100 MB/s
+- Minimum dataset: 50M+ samples (~10 GB)
+- Minimum training time: 5+ minutes baseline
+- **Verdict**: Rarely beneficial
+
+**10 Gbps Ethernet (Mac Studio)**
+- Max throughput: ~1 GB/s
+- Minimum dataset: 10M+ samples
+- Minimum training time: 2+ minutes baseline
+- **Verdict**: Useful for large datasets
+
+**25-100 Gbps (InfiniBand/RoCE)**
+- Max throughput: 3-12 GB/s
+- Suitable for any dataset that doesn't fit in RAM
+- **Verdict**: Production multi-node training
+
+### macOS Network Options
+
+| Connection | Bandwidth | Latency | Suitable |
+|------------|-----------|---------|----------|
+| WiFi | Variable | High | No |
+| 1 Gbps Ethernet | 125 MB/s | Low | Marginal |
+| 10 Gbps Ethernet | 1.25 GB/s | Low | Yes |
+| Thunderbolt Bridge | 10-40 Gbps | Very Low | Yes |
+
+---
+
 ## Conclusions
 
 ### For macOS
