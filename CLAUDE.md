@@ -38,4 +38,20 @@ pixi run python benchmark_full.py --test rf-sklearn   # Test sklearn RandomFores
 pixi run python benchmark_full.py --test rf-xgboost   # Test XGBoost RandomForest
 pixi run python benchmark_full.py --test rf-lightgbm  # Test LightGBM RandomForest
 pixi run python benchmark_full.py --skip-rf           # Skip RF benchmarks
+
+# 2-Mac cluster (XGBoost + Dask)
+pixi run python benchmark_2mac_xgboost.py              # Workers on remote, tracker on local
+pixi run python benchmark_2mac_xgboost.py --ssh-mode   # Everything on remote (most reliable)
+pixi run python benchmark_2mac_xgboost.py --debug      # With debug output
 ```
+
+## Multi-Machine Distributed Training (macOS)
+
+See `docs/DASK_DISTRIBUTED.md` for detailed investigation.
+
+**XGBoost + Dask on 2-Mac cluster:**
+- Use `benchmark_2mac_xgboost.py` with two modes:
+  - Default: Workers on remote, XGBoost tracker on local
+  - SSH mode (`--ssh-mode`): Everything runs on remote (avoids lo0 issue)
+- The macOS lo0 routing issue prevents workers and tracker on same machine
+- See script comments for details on the networking constraints

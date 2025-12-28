@@ -22,7 +22,7 @@ This document summarizes the investigation into running distributed GBM training
 | Framework | Library | Local | Multi-Machine | Notes |
 |-----------|---------|-------|---------------|-------|
 | Dask | LightGBM | Works | SSH tunnel only | Slower than single machine |
-| Dask | XGBoost | BROKEN | N/A | Hangs on `dxgb.train()` |
+| Dask | XGBoost | **Works** | SSH mode only | Requires `tracker_host_ip` fix |
 | Ray | XGBoost | Works | Fails | Multi-port requirements |
 | Ray | xgboost_ray | BROKEN | N/A | Compat issues with XGBoost 3.x |
 
@@ -60,16 +60,47 @@ macOS routes traffic to a machine's own external IP through the loopback interfa
 
 ## XGBoost + Dask
 
-**Status: BROKEN**
+**Status: WORKS (with fix)**
 
-`xgboost.dask.train()` hangs indefinitely regardless of configuration:
-- Single worker, synchronous mode
-- Multiple workers
-- Different chunk sizes
-- Explicit host binding
+### The Fix
 
-**Known Issues:**
-- [Rabit initialization hangs](https://github.com/dmlc/xgboost/issues/6649)
+The hang was caused by XGBoost's Rabit tracker failing to resolve the correct IP on macOS. The fix is to explicitly set `tracker_host_ip='127.0.0.1'` using `xgboost.collective.Config`:
+
+```python
+from xgboost.collective import Config
+from xgboost import dask as dxgb
+
+coll_cfg = Config(
+    retry=3,
+    timeout=60,
+    tracker_host_ip="127.0.0.1",  # KEY FIX for macOS
+    tracker_port=0
+)
+
+output = dxgb.train(client, params, dtrain, num_boost_round=100, coll_cfg=coll_cfg)
+```
+
+### Benchmark Results (2-Mac Cluster via SSH mode)
+
+| Samples | Baseline (local) | Dask (remote) | Speedup |
+|---------|-----------------|---------------|---------|
+| 500K | 0.91s | 4.20s | 0.22x |
+| 2M | 1.87s | 5.89s | 0.32x |
+
+Dask is slower due to data transfer and coordination overhead.
+
+### Usage
+
+```bash
+# SSH mode (recommended - everything runs on remote):
+pixi run python benchmark_2mac_xgboost.py --ssh-mode
+
+# With more workers:
+pixi run python benchmark_2mac_xgboost.py --ssh-mode --workers 4 --threads 4
+```
+
+### Known Issues (now resolved)
+- [Rabit initialization hangs](https://github.com/dmlc/xgboost/issues/6649) - Fixed with `tracker_host_ip`
 - [DaskDMatrix worker restart issues](https://github.com/dmlc/xgboost/issues/9420)
 
 ---
@@ -122,9 +153,17 @@ Ray adds significant overhead for small workloads.
 ### For macOS
 
 1. **Use single-machine training** - it's faster for typical workloads
-2. **XGBoost + Dask is broken** with current versions (3.x + 2025.x)
+2. **XGBoost + Dask works** with `tracker_host_ip='127.0.0.1'` fix (but slower than single machine)
 3. **LightGBM + Dask works** but provides no speedup
 4. **Ray** works locally but multi-machine fails due to port requirements
+
+### When to Use Distributed
+
+Distributed training on macOS only makes sense when:
+- Dataset doesn't fit in memory on a single machine
+- You need fault tolerance for very long training runs
+
+For typical workloads, single-machine XGBoost is 3-5x faster than Dask distributed.
 
 ### For Production Multi-Machine
 
@@ -135,9 +174,12 @@ Use Linux where:
 
 ---
 
-## Prototype Scripts
+## Scripts
 
-Investigation scripts preserved in `_prototypes/`:
+**Main script:**
+- `benchmark_2mac_xgboost.py` - XGBoost + Dask on 2-Mac cluster (with fix)
+
+**Investigation scripts** preserved in `_prototypes/`:
 - `test_dask_connectivity.py` - Connectivity diagnostics
 - `test_approach1_ssh_tunnel.py` - SSH tunnel test
 - `test_approach2_remote_scheduler.py` - Direct connection test
