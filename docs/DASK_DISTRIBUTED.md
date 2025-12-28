@@ -241,10 +241,78 @@ Use Linux where:
 
 ---
 
+## Model-Parallel vs Data-Parallel RF
+
+### The Problem with XGBoost Dask RF
+
+XGBoost Dask uses **data-parallelism** for both GBM and RF:
+- Each worker gets a chunk of DATA
+- Workers build ALL trees on their data chunk
+- Must sync histograms every iteration
+
+This doesn't leverage RF's embarrassingly parallel nature.
+
+### Model-Parallel RF Solution
+
+Distribute TREES across workers instead of DATA:
+
+```python
+from dask.distributed import Client, LocalCluster
+from sklearn.ensemble import RandomForestClassifier
+
+def train_rf_subset(X, y, n_trees, seed):
+    """Train subset of trees on worker (full dataset)."""
+    rf = RandomForestClassifier(n_estimators=n_trees, random_state=seed, n_jobs=-1)
+    rf.fit(X, y)
+    return rf
+
+# Create cluster
+cluster = LocalCluster(n_workers=4)
+client = Client(cluster)
+
+# Broadcast data to all workers
+X_future = client.scatter(X_train, broadcast=True)
+y_future = client.scatter(y_train, broadcast=True)
+
+# Train trees in parallel (no sync needed!)
+trees_per_worker = 100 // 4  # 25 trees each
+futures = [
+    client.submit(train_rf_subset, X_future, y_future, trees_per_worker, seed=42+i)
+    for i in range(4)
+]
+
+# Gather and combine predictions
+forests = client.gather(futures)
+predictions = np.column_stack([rf.predict(X_test) for rf in forests])
+y_pred = (predictions.mean(axis=1) > 0.5).astype(int)
+```
+
+### Benchmark Results
+
+| Method | Time | Speedup | AUC |
+|--------|------|---------|-----|
+| sklearn RF (baseline) | 32.14s | 1.00x | 0.9653 |
+| Model-parallel RF (4w) | 30.14s | 1.07x | 0.9660 |
+| XGBoost Dask RF (4w) | 5.68s | 5.66x | 0.9574 |
+
+Note: XGBoost RF is faster but has lower accuracy. Model-parallel sklearn RF
+maintains accuracy while distributing computation.
+
+### When to Use Each Approach
+
+| Approach | Best For |
+|----------|----------|
+| **Model-parallel RF** | Multi-machine clusters, accuracy matters |
+| **XGBoost Dask RF** | Single machine, speed over accuracy |
+| **sklearn RF (local)** | Single machine, best accuracy |
+
+---
+
 ## Scripts
 
-**Main script:**
+**Main scripts:**
 - `benchmark_2mac_xgboost.py` - XGBoost + Dask on 2-Mac cluster (with fix)
+- `benchmark_rf_model_parallel.py` - Model-parallel RF (distributes trees)
 
 **Investigation scripts** preserved in `_prototypes/`:
 - `test_dask_connectivity.py` - Connectivity diagnostics
