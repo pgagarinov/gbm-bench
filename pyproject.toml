@@ -38,6 +38,8 @@ asyncssh = ">=2.0"
 # macOS uses pypi catboost to avoid numpy binary mismatch
 [tool.pixi.target.osx-arm64.pypi-dependencies]
 catboost = ">=1.2"
+ray = {version = ">=2.40", extras = ["train"]}
+xgboost_ray = ">=0.1.19"
 
 # Linux-specific dependencies (conda catboost + GPU deps)
 [tool.pixi.target.linux-64.dependencies]
