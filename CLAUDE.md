@@ -45,9 +45,9 @@ pixi run python benchmark_2mac_xgboost.py --ssh-mode   # Everything on remote (m
 pixi run python benchmark_2mac_xgboost.py --debug      # With debug output
 
 # Model-parallel RF (distributes trees, not data)
-pixi run python benchmark_rf_model_parallel.py                    # Default: 1M samples, 100 trees
-pixi run python benchmark_rf_model_parallel.py --workers 4        # 4 Dask workers
-pixi run python benchmark_rf_model_parallel.py --trees 200        # More trees
+pixi run python benchmark_rf_distributed.py                       # Compare sklearn/XGBoost/LightGBM RF
+pixi run python benchmark_rf_distributed.py --workers 4 --trees 200
+pixi run python benchmark_rf_model_parallel.py                    # sklearn RF only
 ```
 
 ## Multi-Machine Distributed Training (macOS)

@@ -287,24 +287,37 @@ predictions = np.column_stack([rf.predict(X_test) for rf in forests])
 y_pred = (predictions.mean(axis=1) > 0.5).astype(int)
 ```
 
-### Benchmark Results
+### Benchmark Results (1M samples, 200 trees, 4 workers)
 
-| Method | Time | Speedup | AUC |
-|--------|------|---------|-----|
-| sklearn RF (baseline) | 32.14s | 1.00x | 0.9653 |
-| Model-parallel RF (4w) | 30.14s | 1.07x | 0.9660 |
-| XGBoost Dask RF (4w) | 5.68s | 5.66x | 0.9574 |
+**Single Machine:**
 
-Note: XGBoost RF is faster but has lower accuracy. Model-parallel sklearn RF
-maintains accuracy while distributing computation.
+| Library | Time | AUC |
+|---------|------|-----|
+| XGBoost RF | 3.72s | 0.9516 |
+| LightGBM RF | 25.28s | 0.9603 |
+| sklearn RF | 32.00s | 0.9653 |
+
+**Distributed (model-parallel):**
+
+| Library | Time | Speedup | Efficiency | AUC |
+|---------|------|---------|------------|-----|
+| LightGBM RF | 10.85s | **2.33x** | 58% | 0.9609 |
+| XGBoost RF | 10.84s | 0.34x | 9% | 0.9509 |
+| sklearn RF | 31.06s | 1.03x | 26% | 0.9660 |
+
+**Key findings:**
+- **LightGBM RF scales best** (2.33x speedup) because single-machine is slower
+- **XGBoost RF** already so fast that distribution adds overhead
+- **sklearn RF** already uses all cores, minimal benefit on same machine
 
 ### When to Use Each Approach
 
-| Approach | Best For |
-|----------|----------|
-| **Model-parallel RF** | Multi-machine clusters, accuracy matters |
-| **XGBoost Dask RF** | Single machine, speed over accuracy |
-| **sklearn RF (local)** | Single machine, best accuracy |
+| Scenario | Best Choice |
+|----------|-------------|
+| **Speed priority (single machine)** | XGBoost RF (3.72s) |
+| **Accuracy priority** | sklearn RF (0.9653 AUC) |
+| **Multi-machine distribution** | LightGBM RF (best scaling) |
+| **Large datasets, distributed** | LightGBM RF model-parallel |
 
 ---
 
@@ -312,7 +325,8 @@ maintains accuracy while distributing computation.
 
 **Main scripts:**
 - `benchmark_2mac_xgboost.py` - XGBoost + Dask on 2-Mac cluster (with fix)
-- `benchmark_rf_model_parallel.py` - Model-parallel RF (distributes trees)
+- `benchmark_rf_distributed.py` - Distributed RF comparison (sklearn/XGBoost/LightGBM)
+- `benchmark_rf_model_parallel.py` - Model-parallel sklearn RF only
 
 **Investigation scripts** preserved in `_prototypes/`:
 - `test_dask_connectivity.py` - Connectivity diagnostics
